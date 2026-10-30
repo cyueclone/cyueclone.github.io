@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>Breakout | ATB Game Port</title>
+<style>
+:root {
+  --game-w: 640;
+  --game-h: 480;
+  --toolbar-h: 48px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body {
+  width:100%; height:100dvh; overflow:hidden;
+  background:#0f172a; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+#app {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100dvh; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+#toolbar {
+  width:100%; max-width:min(640px,98vw); height:var(--toolbar-h);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 8px; gap:6px; flex-shrink:0;
+}
+#toolbar button {
+  padding:4px 10px; font-size:12px; border:1px solid #334155; border-radius:6px;
+  background:#1e293b; color:#e2e8f0; cursor:pointer; white-space:nowrap;
+}
+#toolbar button:hover { background:#334155; }
+#toolbar select {
+  padding:4px 6px; font-size:12px; border:1px solid #334155; border-radius:6px;
+  background:#1e293b; color:#e2e8f0; cursor:pointer;
+}
+#game-stage {
+  width:min(640px,98vw); aspect-ratio:640/480;
+  max-height:calc(100dvh - var(--toolbar-h) - 8px);
+  position:relative; flex-shrink:1;
+}
+#bg-canvas { position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; image-rendering:auto; }
+#fg-canvas { position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; image-rendering:auto; }
+#overlay {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.55); backdrop-filter:blur(3px);
+  color:#e2e8f0; text-align:center; z-index:10;
+}
+#overlay h2 { font-size:28px; margin-bottom:8px; }
+#overlay p { font-size:14px; color:#94a3b8; margin-bottom:16px; }
+#overlay button {
+  padding:8px 24px; font-size:16px; border:none; border-radius:8px;
+  background:#3b82f6; color:#fff; cursor:pointer; margin:4px;
+}
+#overlay button:hover { background:#2563eb; }
+#overlay button.secondary { background:#475569; }
+#overlay button.secondary:hover { background:#64748b; }
+.hidden { display:none!important; }
+#settings-panel {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(15,23,42,0.92); color:#e2e8f0; z-index:20;
+  padding:16px; gap:12px;
+}
+#settings-panel h3 { font-size:18px; }
+#settings-panel label { font-size:13px; color:#94a3b8; }
+#settings-panel input[type=range] { width:140px; }
+#easter-btn { position:fixed; bottom:12px; right:12px; width:32px; height:32px;
+  border-radius:50%; background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.4);
+  color:#3b82f6; font-size:16px; cursor:pointer; z-index:30; display:flex;
+  align-items:center; justify-content:center;
+}
+#toast {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:#1e293b; color:#38bdf8; padding:10px 20px; border-radius:10px;
+  font-size:13px; z-index:50; opacity:0; transition:opacity 0.3s;
+  pointer-events:none; text-align:center; max-width:90vw;
+}
+#toast.show { opacity:1; }
+@media (max-width:600px) {
+  #toolbar button { padding:4px 6px; font-size:11px; }
+  #toolbar select { font-size:11px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <select id="lang-select">
+      <option value="en">EN</option>
+      <option value="zh-CN">中文</option>
+      <option value="ja">日本語</option>
+      <option value="fr">Français</option>
+      <option value="de">Deutsch</option>
+      <option value="es">Español</option>
+    </select>
+    <button id="save-btn" title="Save">💾</button>
+    <button id="load-btn" title="Load">📂</button>
+    <button id="reset-btn" title="Reset">🔄</button>
+    <button id="settings-btn">⚙️</button>
+  </div>
+  <div id="game-stage">
+    <canvas id="bg-canvas" width="640" height="480"></canvas>
+    <canvas id="fg-canvas" width="640" height="480"></canvas>
+    <div id="overlay">
+      <h2 id="overlay-title">Breakout</h2>
+      <p id="overlay-sub"></p>
+      <button id="start-btn">▶ Start</button>
+    </div>
+    <div id="settings-panel" class="hidden">
+      <h3 id="settings-title">Settings</h3>
+      <label><span>SFX Volume</span> <input type="range" id="sfx-vol" min="0" max="100" value="50"></label>
+      <label>
+        <span>🎮 Powered by <a href="https://fun.aitobox.com" target="_blank" rel="noopener noreferrer">fun.aitobox.com</a></span>
+      </label>
+      <button id="save-json-btn">📥 Export Save</button>
+      <button id="load-json-btn">📤 Import Save</button>
+      <button id="close-settings-btn" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+<div id="easter-btn" title="Easter Egg">🥚</div>
+<div id="toast"></div>
+<script src="breakout.js"></script>
+</body>
+</html>
