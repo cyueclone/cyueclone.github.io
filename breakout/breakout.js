@@ -669,9 +669,6 @@ document.getElementById('overlay-title').addEventListener('click', () => {
   }
 });
 
-document.getElementById('easter-btn').addEventListener('click', () => {
-  showToast(t('easter'));
-});
 
 // ============================================================
 // Initialization — Zero-Black-Screen Invariant 3
