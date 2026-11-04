@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NCM2MP3 - 在线 NCM 转换器</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--sub:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#eab308}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;min-height:100dvh;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text)}
+#app{max-width:680px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;text-align:center;margin-bottom:4px}
+h1 span{color:var(--accent)}
+.subtitle{text-align:center;color:var(--sub);font-size:13px;margin-bottom:24px}
+.drop-zone{border:2px dashed var(--border);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;background:var(--card)}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:rgba(59,130,246,0.08)}
+.drop-zone .icon{font-size:36px;margin-bottom:8px}
+.drop-zone p{color:var(--sub);font-size:14px}
+.drop-zone .browse{color:var(--accent);text-decoration:underline;cursor:pointer}
+#file-input{display:none}
+.stats{display:flex;gap:12px;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+.stat{background:var(--card);border-radius:8px;padding:12px 20px;text-align:center;min-width:80px}
+.stat .num{font-size:22px;font-weight:700}
+.stat .label{font-size:11px;color:var(--sub)}
+.stat.success .num{color:var(--green)}
+.stat.fail .num{color:var(--red)}
+.stat.total .num{color:var(--accent)}
+#file-list{display:flex;flex-direction:column;gap:8px}
+.file-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;align-items:center;gap:12px}
+.file-item .info{flex:1;min-width:0}
+.file-item .name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-item .meta{font-size:11px;color:var(--sub);margin-top:2px}
+.file-item .status{font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap;font-weight:600}
+.status.pending{background:var(--border);color:var(--sub)}
+.status.processing{background:rgba(59,130,246,0.2);color:var(--accent)}
+.status.done{background:rgba(34,197,94,0.2);color:var(--green)}
+.status.error{background:rgba(239,68,68,0.2);color:var(--red)}
+.file-item .dl-btn{padding:6px 14px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:var(--accent);color:#fff;white-space:nowrap}
+.file-item .dl-btn:disabled{opacity:0.4;cursor:default}
+.progress-bar{height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden}
+.progress-bar .fill{height:100%;background:var(--accent);transition:width 0.3s}
+#log{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:16px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--sub);display:none}
+#log .log-line{margin-bottom:2px}
+#log .log-ok{color:var(--green)}
+#log .log-err{color:var(--red)}
+.footer{text-align:center;margin-top:32px;font-size:11px;color:var(--sub)}
+.footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+<h1>NCM<span>2</span>MP3</h1>
+<p class="subtitle">网易云音乐 NCM 格式在线转换 · 所有操作在本地完成 · 无需上传</p>
+<div class="drop-zone" id="drop-zone">
+<div class="icon">🎵</div>
+<p>拖拽 NCM 文件到这里</p>
+<p>或 <span class="browse" id="browse-btn">点击选择文件</span></p>
+</div>
+<input type="file" id="file-input" accept=".ncm" multiple>
+<div class="stats" id="stats" style="display:none">
+<div class="stat total"><div class="num" id="stat-total">0</div><div class="label">文件总数</div></div>
+<div class="stat success"><div class="num" id="stat-ok">0</div><div class="label">转换成功</div></div>
+<div class="stat fail"><div class="num" id="stat-fail">0</div><div class="label">转换失败</div></div>
+</div>
+<div id="file-list"></div>
+<div id="log"></div>
+<p class="footer">Powered by <a href="https://cyueclone.github.io" target="_blank">cyueclone.github.io</a> · 转换完全在浏览器本地进行 · 不会上传任何文件</p>
+</div>
+<script>
+(function(){
+'use strict';
+// ========== AES-128-ECB ==========
+const SBOX=new Uint8Array([0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16]);
+const INV_SBOX=new Uint8Array([0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e,0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25,0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92,0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84,0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06,0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b,0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73,0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e,0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b,0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4,0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f,0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef,0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61,0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d]);
+const RCON=[0,1,2,4,8,16,32,64,128,27,54];
+const MUL2=new Uint8Array(256);
+const MUL3=new Uint8Array(256);
+const MUL9=new Uint8Array(256);
+const MUL11=new Uint8Array(256);
+const MUL13=new Uint8Array(256);
+const MUL14=new Uint8Array(256);
+(function(){
+for(let i=0;i<256;i++){let x=i;MUL2[i]=(x<<1)^(x&0x80?0x1b:0);MUL3[i]=MUL2[i]^i;let x2=MUL2[i],x4=MUL2[x2&0xff],x8=MUL2[x4&0xff];MUL9[i]=x8^i;MUL11[i]=x8^x2^i;MUL13[i]=x8^x4^i;MUL14[i]=x8^x4^x2;}
+MUL2[255]&=0xff;MUL3[255]&=0xff;MUL9[255]&=0xff;MUL11[255]&=0xff;MUL13[255]&=0xff;MUL14[255]&=0xff;
+})();
+function rotWord(w){return[w[1],w[2],w[3],w[0]];}
+function subWord(w){return[SBOX[w[0]],SBOX[w[1]],SBOX[w[2]],SBOX[w[3]]];}
+function keyExpansion(key){
+const K=new Uint8Array(176);
+for(let i=0;i<16;i++)K[i]=key[i];
+for(let i=16;i<176;i+=4){
+let t=[K[i-4],K[i-3],K[i-2],K[i-1]];
+if(i%16===0){t=subWord(rotWord(t));t[0]^=RCON[i/16];}
+K[i]=K[i-16]^t[0];K[i+1]=K[i-15]^t[1];K[i+2]=K[i-14]^t[2];K[i+3]=K[i-13]^t[3];
+}
+return K;
+}
+function addRoundKey(state,rk,off){for(let i=0;i<16;i++)state[i]^=rk[off+i];}
+function invSubBytes(s){for(let i=0;i<16;i++)s[i]=INV_SBOX[s[i]];}
+function invShiftRows(s){let t=s[7];s[7]=s[4];s[4]=s[1];s[1]=t;t=s[14];s[14]=s[8];s[8]=s[2];s[2]=t;let u=s[10];s[10]=s[13];s[13]=u;t=s[3];s[3]=s[6];s[6]=s[9];s[9]=s[12];s[12]=t;}
+function invMixColumns(s){
+for(let c=0;c<16;c+=4){
+let a=s[c],b=s[c+1],d=s[c+2],e=s[c+3];
+s[c]=MUL14[a]^MUL11[b]^MUL13[d]^MUL9[e];
+s[c+1]=MUL9[a]^MUL14[b]^MUL11[d]^MUL13[e];
+s[c+2]=MUL13[a]^MUL9[b]^MUL14[d]^MUL11[e];
+s[c+3]=MUL11[a]^MUL13[b]^MUL9[d]^MUL14[e];
+}
+}
+function aesEcbDecrypt(ciphertext,key){
+const K=keyExpansion(key);
+const blocks=[];
+for(let b=0;b<ciphertext.length;b+=16){
+let s=new Uint8Array(ciphertext.slice(b,b+16));
+addRoundKey(s,K,160);
+for(let r=9;r>=1;r--){invShiftRows(s);invSubBytes(s);addRoundKey(s,K,r*16);invMixColumns(s);}
+invShiftRows(s);invSubBytes(s);addRoundKey(s,K,0);
+for(let i=0;i<16;i++)blocks.push(s[i]);
+}
+return new Uint8Array(blocks);
+}
+function pkcs5Unpad(data){
+if(data.length===0)return data;
+let pad=data[data.length-1];
+if(pad<1||pad>16)return data;
+for(let i=data.length-pad;i<data.length;i++)if(data[i]!==pad)return data;
+return data.slice(0,data.length-pad);
+}
+
+// ========== RC4 ==========
+function rc4Crypt(data,key){
+const s=new Uint8Array(256);
+for(let i=0;i<256;i++)s[i]=i;
+let j=0;
+for(let i=0;i<256;i++){j=(j+s[i]+key[i%key.length])&0xff;let t=s[i];s[i]=s[j];s[j]=t;}
+let i=0;j=0;
+const out=new Uint8Array(data.length);
+for(let k=0;k<data.length;k++){i=(i+1)&0xff;j=(j+s[i])&0xff;let t=s[i];s[i]=s[j];s[j]=t;out[k]=data[k]^s[(s[i]+s[j])&0xff];}
+return out;
+}
+
+// ========== NCM Parser ==========
+const CORE_KEY=new Uint8Array([0x68,0x7a,0x48,0x52,0x41,0x6d,0x73,0x6f,0x35,0x6b,0x49,0x6e,0x62,0x61,0x78,0x57]);
+const MATA_KEY=new Uint8Array([0x23,0x31,0x34,0x6c,0x6a,0x6b,0x5f,0x21,0x5c,0x5d,0x26,0x30,0x55,0x3c,0x27,0x28]);
+function parseNCM(buffer){
+const dv=new DataView(buffer);
+let offset=10;
+// key data
+const keyLen=dv.getUint32(offset,true);offset+=4;
+let keyData=new Uint8Array(buffer,offset,keyLen);offset+=keyLen;
+for(let i=0;i<keyLen;i++)keyData[i]^=0x64;
+keyData=aesEcbDecrypt(keyData,CORE_KEY);
+keyData=pkcs5Unpad(keyData);
+keyData=keyData.slice(17);
+// meta data
+const metaLen=dv.getUint32(offset,true);offset+=4;
+let metaData=new Uint8Array(buffer,offset,metaLen);offset+=metaLen;
+for(let i=0;i<metaLen;i++)metaData[i]^=0x63;
+metaData=metaData.slice(22);
+let metaStr=new TextDecoder().decode(metaData);
+metaStr=atob(metaStr);
+metaData=new Uint8Array(metaStr.split('').map(c=>c.charCodeAt(0)));
+metaData=aesEcbDecrypt(metaData,MATA_KEY);
+metaData=pkcs5Unpad(metaData);
+metaData=metaData.slice(6);
+const meta=JSON.parse(new TextDecoder().decode(metaData));
+// crc+gap
+offset+=9;
+// image
+const imgLen=dv.getUint32(offset,true);offset+=4;
+const imgData=imgLen>0?new Uint8Array(buffer,offset,imgLen):null;offset+=imgLen;
+// music
+const musicData=new Uint8Array(buffer,offset);
+const decrypted=rc4Crypt(musicData,keyData);
+return{meta,imgData,musicData:decrypted};
+}
+
+// ========== UI ==========
+const dropZone=document.getElementById('drop-zone');
+const fileInput=document.getElementById('file-input');
+const fileList=document.getElementById('file-list');
+const stats=document.getElementById('stats');
+const log=document.getElementById('log');
+let files=[];
+
+function updateStats(){
+const total=files.length;
+const ok=files.filter(f=>f.status==='done').length;
+const fail=files.filter(f=>f.status==='error').length;
+document.getElementById('stat-total').textContent=total;
+document.getElementById('stat-ok').textContent=ok;
+document.getElementById('stat-fail').textContent=fail;
+stats.style.display=total>0?'flex':'none';
+}
+
+function addLog(msg,err){
+log.style.display='block';
+const d=document.createElement('div');
+d.className='log-line'+(err?' log-err':' log-ok');
+d.textContent=(err?'[ERR] ':'[OK] ')+msg;
+log.appendChild(d);
+log.scrollTop=log.scrollHeight;
+}
+
+function renderFiles(){
+fileList.innerHTML=files.map((f,i)=>{
+let statusClass='pending',statusText='等待';
+if(f.status==='processing'){statusClass='processing';statusText=f.progress+'%';}
+else if(f.status==='done'){statusClass='done';statusText='完成';}
+else if(f.status==='error'){statusClass='error';statusText='失败';}
+let metaHTML='';
+if(f.meta)metaHTML='<div class="meta">'+f.meta.musicName+' · '+f.meta.format.toUpperCase()+' · '+(f.metaSize?f.metaSize:'')+'</div>';
+let dlHTML='';
+if(f.status==='done')dlHTML='<button class="dl-btn" onclick="downloadFile('+i+')">下载</button>';
+let progressHTML='';
+if(f.status==='processing')progressHTML='<div class="progress-bar"><div class="fill" style="width:'+f.progress+'%"></div></div>';
+return '<div class="file-item"><div class="info"><div class="name">'+f.name+'</div>'+metaHTML+progressHTML+'</div><span class="status '+statusClass+'">'+statusText+'</span>'+dlHTML+'</div>';
+}).join('');
+updateStats();
+}
+
+function addFiles(newFiles){
+for(const f of newFiles){
+if(!f.name.toLowerCase().endsWith('.ncm')){addLog(f.name+' 不是NCM文件,跳过',true);continue;}
+files.push({name:f.name,file:f,status:'pending',progress:0,result:null,meta:null,metaSize:null});
+addLog(f.name);
+}
+renderFiles();
+if(files.some(f=>f.status==='pending'))processNext();
+}
+
+async function processNext(){
+const idx=files.findIndex(f=>f.status==='pending');
+if(idx<0)return;
+const f=files[idx];
+f.status='processing';f.progress=0;renderFiles();
+try{
+const buf=await f.file.arrayBuffer();
+f.progress=30;renderFiles();
+const result=parseNCM(buf);
+f.progress=80;renderFiles();
+const ext=result.meta.format||'mp3';
+const outName=f.name.replace(/\.ncm$/i,'.'+ext);
+const blob=new Blob([result.musicData],{type:'audio/'+(ext==='flac'?'flac':'mpeg')});
+f.result={blob,name:outName,meta:result.meta,imgData:result.imgData};
+f.meta=result.meta;
+f.metaSize=(blob.size/1024/1024).toFixed(1)+' MB';
+f.status='done';f.progress=100;
+addLog(outName+' ('+f.metaSize+')',false);
+}catch(e){
+f.status='error';
+addLog(f.name+': '+e.message,true);
+}
+renderFiles();
+processNext();
+}
+
+window.downloadFile=function(idx){
+const f=files[idx];
+if(!f.result)return;
+const url=URL.createObjectURL(f.result.blob);
+const a=document.createElement('a');
+a.href=url;a.download=f.result.name;a.click();
+URL.revokeObjectURL(url);
+};
+
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag-over');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag-over');addFiles(Array.from(e.dataTransfer.files));});
+dropZone.addEventListener('click',()=>fileInput.click());
+document.getElementById('browse-btn').addEventListener('click',e=>{e.stopPropagation();fileInput.click();});
+fileInput.addEventListener('change',()=>{addFiles(Array.from(fileInput.files));fileInput.value='';});
+})();
+</script>
+</body>
+</html>
