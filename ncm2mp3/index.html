@@ -80,8 +80,8 @@ const MUL11=new Uint8Array(256);
 const MUL13=new Uint8Array(256);
 const MUL14=new Uint8Array(256);
 (function(){
-for(let i=0;i<256;i++){let x=i;MUL2[i]=(x<<1)^(x&0x80?0x1b:0);MUL3[i]=MUL2[i]^i;let x2=MUL2[i],x4=MUL2[x2&0xff],x8=MUL2[x4&0xff];MUL9[i]=x8^i;MUL11[i]=x8^x2^i;MUL13[i]=x8^x4^i;MUL14[i]=x8^x4^x2;}
-MUL2[255]&=0xff;MUL3[255]&=0xff;MUL9[255]&=0xff;MUL11[255]&=0xff;MUL13[255]&=0xff;MUL14[255]&=0xff;
+for(let i=0;i<256;i++){let x=i;MUL2[i]=((x<<1)^(x&0x80?0x1b:0))&0xff;}
+for(let i=0;i<256;i++){const x2=MUL2[i],x4=MUL2[x2&0xff],x8=MUL2[x4&0xff];MUL3[i]=x2^i;MUL9[i]=x8^i;MUL11[i]=x8^x2^i;MUL13[i]=x8^x4^i;MUL14[i]=x8^x4^x2;}
 })();
 function rotWord(w){return[w[1],w[2],w[3],w[0]];}
 function subWord(w){return[SBOX[w[0]],SBOX[w[1]],SBOX[w[2]],SBOX[w[3]]];}
@@ -97,7 +97,7 @@ return K;
 }
 function addRoundKey(state,rk,off){for(let i=0;i<16;i++)state[i]^=rk[off+i];}
 function invSubBytes(s){for(let i=0;i<16;i++)s[i]=INV_SBOX[s[i]];}
-function invShiftRows(s){let t=s[7];s[7]=s[4];s[4]=s[1];s[1]=t;t=s[14];s[14]=s[8];s[8]=s[2];s[2]=t;let u=s[10];s[10]=s[13];s[13]=u;t=s[3];s[3]=s[6];s[6]=s[9];s[9]=s[12];s[12]=t;}
+function invShiftRows(s){let t=s[13];s[13]=s[9];s[9]=s[5];s[5]=s[1];s[1]=t;t=s[2];s[2]=s[10];s[10]=t;t=s[6];s[6]=s[14];s[14]=t;t=s[3];s[3]=s[7];s[7]=s[11];s[11]=s[15];s[15]=t;}
 function invMixColumns(s){
 for(let c=0;c<16;c+=4){
 let a=s[c],b=s[c+1],d=s[c+2],e=s[c+3];
@@ -108,6 +108,7 @@ s[c+3]=MUL11[a]^MUL13[b]^MUL9[d]^MUL14[e];
 }
 }
 function aesEcbDecrypt(ciphertext,key){
+ciphertext=ciphertext.slice(0,Math.floor(ciphertext.length/16)*16);
 const K=keyExpansion(key);
 const blocks=[];
 for(let b=0;b<ciphertext.length;b+=16){
@@ -127,16 +128,32 @@ for(let i=data.length-pad;i<data.length;i++)if(data[i]!==pad)return data;
 return data.slice(0,data.length-pad);
 }
 
-// ========== RC4 ==========
-function rc4Crypt(data,key){
-const s=new Uint8Array(256);
-for(let i=0;i<256;i++)s[i]=i;
-let j=0;
-for(let i=0;i<256;i++){j=(j+s[i]+key[i%key.length])&0xff;let t=s[i];s[i]=s[j];s[j]=t;}
-let i=0;j=0;
+// ========== KeyBox 流密码 ==========
+function buildKeyBox(key){
+const box=new Uint8Array(256);
+for(let i=0;i<256;i++)box[i]=i;
+const keyLen=key.length;
+let c=0,lastByte=0,keyOffset=0;
+for(let i=0;i<256;i++){
+c=(box[i]+lastByte+key[keyOffset])&0xff;
+keyOffset++;
+if(keyOffset>=keyLen)keyOffset=0;
+const t=box[i];box[i]=box[c];box[c]=t;
+lastByte=c;
+}
+return box;
+}
+function keyBoxCrypt(data,box){
 const out=new Uint8Array(data.length);
-for(let k=0;k<data.length;k++){i=(i+1)&0xff;j=(j+s[i])&0xff;let t=s[i];s[i]=s[j];s[j]=t;out[k]=data[k]^s[(s[i]+s[j])&0xff];}
+for(let i=0;i<data.length;i++){
+const j=(i+1)&0xff;
+out[i]=data[i]^box[(box[j]+box[(box[j]+j)&0xff])&0xff];
+}
 return out;
+}
+function truncateAtControl(data){
+for(let i=0;i<data.length;i++)if(data[i]<16)return data.slice(0,i);
+return data;
 }
 
 // ========== NCM Parser ==========
@@ -150,8 +167,8 @@ const keyLen=dv.getUint32(offset,true);offset+=4;
 let keyData=new Uint8Array(buffer,offset,keyLen);offset+=keyLen;
 for(let i=0;i<keyLen;i++)keyData[i]^=0x64;
 keyData=aesEcbDecrypt(keyData,CORE_KEY);
-keyData=pkcs5Unpad(keyData);
 keyData=keyData.slice(17);
+keyData=truncateAtControl(keyData);
 // meta data
 const metaLen=dv.getUint32(offset,true);offset+=4;
 let metaData=new Uint8Array(buffer,offset,metaLen);offset+=metaLen;
@@ -161,8 +178,8 @@ let metaStr=new TextDecoder().decode(metaData);
 metaStr=atob(metaStr);
 metaData=new Uint8Array(metaStr.split('').map(c=>c.charCodeAt(0)));
 metaData=aesEcbDecrypt(metaData,MATA_KEY);
-metaData=pkcs5Unpad(metaData);
 metaData=metaData.slice(6);
+metaData=truncateAtControl(metaData);
 const meta=JSON.parse(new TextDecoder().decode(metaData));
 // crc+gap
 offset+=9;
@@ -171,7 +188,7 @@ const imgLen=dv.getUint32(offset,true);offset+=4;
 const imgData=imgLen>0?new Uint8Array(buffer,offset,imgLen):null;offset+=imgLen;
 // music
 const musicData=new Uint8Array(buffer,offset);
-const decrypted=rc4Crypt(musicData,keyData);
+const decrypted=keyBoxCrypt(musicData,buildKeyBox(keyData));
 return{meta,imgData,musicData:decrypted};
 }
 
